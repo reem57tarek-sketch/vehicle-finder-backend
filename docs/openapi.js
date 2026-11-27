@@ -3,7 +3,7 @@ const { version } = require("../package.json");
 const requestId = "c6d9310f-1823-4279-9fc4-19dfd154dd14";
 const tokenExample = "a".repeat(64);
 const userExample = {
-  user_id: "1", full_name: "Mostafa Sayed", email: "mostafa@example.com",
+  user_id: "507f1f77bcf86cd799439011", full_name: "Mostafa Sayed", email: "mostafa@example.com",
   phone_number: "01012345678", is_email_verified: true, created_at: "2026-11-23T12:00:00.000Z",
 };
 const ref = (name) => ({ $ref: `#/components/schemas/${name}` });
@@ -51,8 +51,8 @@ function createOpenApi(config) {
     timestamp: "2026-11-23T12:00:00.000Z", health: "/health", docs: "/api-docs/", openapi: "/openapi.json",
   };
   const readiness = (id) => operation(id, "Check database readiness", ["Status"], {
-    "200": success("Database is connected and required user columns exist", ref("Readiness"), { status: "ok", database: "connected" }),
-    "503": error("Database is unreachable or its schema is incomplete", "Database is unavailable or its schema is not ready", "DATABASE_NOT_READY"),
+    "200": success("MongoDB is connected and user indexes are ready", ref("Readiness"), { status: "ok", database: "connected" }),
+    "503": error("MongoDB is unreachable or user indexes cannot be initialized", "MongoDB is unavailable or its indexes are not ready", "DATABASE_NOT_READY"),
   }, { description: "Use this endpoint as the deployment healthcheck. Does not verify email delivery." });
   // Readiness has a specific 503 response; keep it instead of the generic default.
   const paths = {
@@ -79,7 +79,7 @@ function createOpenApi(config) {
         "403": error("Email has not been verified", "Please verify your email before logging in"),
       }, { description: "Copy the returned token into the Authorize button (without the Bearer prefix). Protected requests will send Authorization: Bearer <token>." }) },
     "/api/auth/verify-email": { get: operation("verifyEmail", "Verify an email address", ["Authentication"], {
-      "200": userResponse("Email verified successfully", { user_id: "1", full_name: "Mostafa Sayed", email: "mostafa@example.com", is_email_verified: true }),
+      "200": userResponse("Email verified successfully", { user_id: "507f1f77bcf86cd799439011", full_name: "Mostafa Sayed", email: "mostafa@example.com", is_email_verified: true }),
       "400": error("Missing, malformed, expired, or previously used token", "Invalid or expired verification link"),
     }, { parameters: [{ name: "token", in: "query", required: true, schema: token, example: tokenExample }] }) },
     "/api/auth/forgot-password": { post: writeOperation("forgotPassword", "Send a password-reset link", ["Authentication"],
@@ -99,7 +99,7 @@ function createOpenApi(config) {
       }, { description: "A successful reset consumes the token. Existing JWTs remain valid until their original expiration." }) },
     "/api/auth/profile": { get: operation("getTokenProfile", "Inspect authenticated JWT claims", ["Users"], {
       "200": success("Access granted", bodySchema({ message: { type: "string" }, user: ref("TokenClaims") }),
-        { message: "Access granted", user: { user_id: "1", email: "mostafa@example.com", iat: 1795435200, exp: 1795438800 } }),
+        { message: "Access granted", user: { user_id: "507f1f77bcf86cd799439011", email: "mostafa@example.com", iat: 1795435200, exp: 1795438800 } }),
       "401": authRequired,
     }, { security: bearer, description: "Returns JWT claims. Use GET /api/users/profile for the current database profile." }) },
     "/api/users/profile": {
@@ -135,7 +135,7 @@ function createOpenApi(config) {
       "Interactive documentation for every API endpoint. Expand a route to see request fields, examples and success/error responses.",
       "Start by registering, open the verification link from your email, then log in. Paste the returned JWT into **Authorize** to call protected routes.",
       "Examples use fictitious data. Replace email tokens and JWT placeholders with real values from your own test account.",
-      "Requests with a body use application/json (32KB maximum). Errors include message, code and requestId; use the ID to locate the server log. Invalid JSON returns 400 INVALID_JSON. Unknown routes return 404 NOT_FOUND.",
+      "Requests with a body use application/json (32KB maximum). Errors include message, code and requestId; use the ID to locate the server log. Invalid JSON returns 400 INVALID_JSON. Unknown routes return 404 NOT_FOUND. Password recovery returns 503 PASSWORD_RESET_NOT_CONFIGURED when PASSWORD_RESET_URL is missing in production.",
       "CORS preflight OPTIONS requests return 204 for configured origins; disallowed origins receive 403 CORS_ORIGIN_DENIED.",
     ].join("\n\n") },
     servers: [{ url: "/", description: "Current server (local, Railway or Render)" },
@@ -152,11 +152,11 @@ function createOpenApi(config) {
       schemas: {
         Error: bodySchema({ message: { type: "string" }, code: { type: "string" }, requestId: { type: "string", format: "uuid" } }),
         User: bodySchema({
-          user_id: { oneOf: [{ type: "string" }, { type: "integer" }], description: "BIGSERIAL IDs are returned as strings; legacy schemas may use another ID type.", example: "1" },
+          user_id: { type: "string", pattern: "^[a-fA-F0-9]{24}$", description: "MongoDB ObjectId returned as a hexadecimal string.", example: "507f1f77bcf86cd799439011" },
           full_name: fullName, email, phone_number: { ...phone, nullable: true }, is_email_verified: { type: "boolean" },
           created_at: { type: "string", format: "date-time" },
         }, ["user_id", "full_name", "email", "is_email_verified"]),
-        TokenClaims: bodySchema({ user_id: { oneOf: [{ type: "string" }, { type: "integer" }] }, email,
+        TokenClaims: bodySchema({ user_id: { type: "string", pattern: "^[a-fA-F0-9]{24}$" }, email,
           iat: { type: "integer", description: "Issued at (Unix seconds)" }, exp: { type: "integer", description: "Expires at (Unix seconds)" } }),
         Readiness: bodySchema({ status: { type: "string", enum: ["ok"] }, database: { type: "string", enum: ["connected"] } }),
         ServerStatus: bodySchema({

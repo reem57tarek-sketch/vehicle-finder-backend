@@ -6,7 +6,7 @@ const { createApp } = require("../app");
 
 const config = { baseUrl: "https://api.example.com", environment: "production", platform: "render", port: 10000,
   corsOrigins: [], jwtSecret: "private-docs-test-secret-must-not-be-published" };
-const makeApp = () => createApp({ config, pool: { query: async () => { throw new Error("database offline"); } }, emailService: {}, userModel: {} });
+const makeApp = () => createApp({ config, database: { check: async () => { throw new Error("database offline"); } }, emailService: {}, userModel: {} });
 
 test("OpenAPI validates and covers every registered API operation with request/response examples", async () => {
   const spec = createOpenApi(config);

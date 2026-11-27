@@ -2,48 +2,8 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const net = require("node:net");
 const logger = require("../utils/logger");
-const { migrate } = require("../scripts/migrate");
 const { createEmailService } = require("../services/emailService");
 const { createApp } = require("../app");
-const { createPool } = require("../config/db");
-const { loadDatabaseConfig } = require("../config/env");
-
-test("migration CLI rejects invalid SSL before connecting and logs a structured failure", () => {
-  const { spawnSync } = require("node:child_process");
-  const child = spawnSync(process.execPath, ["scripts/migrate.js"], {
-    env: { ...process.env, DATABASE_URL: "postgresql://postgres@127.0.0.1:1/test", DB_SSL: "" },
-    encoding: "utf8", timeout: 5000, windowsHide: true,
-  });
-  assert.equal(child.status, 1);
-  const log = JSON.parse(child.stderr.trim());
-  assert.equal(log.event, "database.migration_failed");
-  assert.equal(log.error.message, "DB_SSL must be true or false");
-});
-
-test("a real PostgreSQL query timeout is recoverable and the pool remains usable", { skip: !process.env.TEST_DATABASE_URL }, async (t) => {
-  const env = { DATABASE_URL: process.env.TEST_DATABASE_URL, DB_TIMEOUT_MS: "500" };
-  const pool = createPool(loadDatabaseConfig(env), env);
-  t.after(() => pool.end());
-  // Warm the connection first so this specifically tests a slow SQL statement.
-  await pool.query("SELECT 1");
-  await assert.rejects(pool.query("SELECT pg_sleep(2)"), (error) => error.code === "57014" || error.message === "Query read timeout");
-  assert.equal((await pool.query("SELECT 1 AS healthy")).rows[0].healthy, 1);
-});
-
-test("failed rollback preserves the original migration error and discards its connection", async () => {
-  const original = Object.assign(new Error("schema permission denied"), { code: "42501" });
-  let released;
-  const client = {
-    async query(sql) {
-      if (sql === "BEGIN") return;
-      if (sql === "ROLLBACK") throw new Error("connection lost during rollback");
-      throw original;
-    },
-    release(error) { released = error; },
-  };
-  await assert.rejects(migrate({ connect: async () => client }), (error) => error === original);
-  assert.equal(released, original);
-});
 
 test("logging BigInt IDs and cyclic causes never throws during error handling", () => {
   const error = new Error("failure");
@@ -111,13 +71,13 @@ test("SMTP success and rejected recipients use the real Nodemailer transport", {
 test("database timeouts return 503 and protected-route errors log the correct endpoint", async (t) => {
   let failure;
   const config = { jwtSecret: "reliability-tests-secret-at-least-32-bytes", corsOrigins: [], baseUrl: "http://localhost:3000" };
-  const app = createApp({ config, pool: {}, emailService: {}, userModel: { getUserByEmail: async () => { throw failure; } } });
+  const app = createApp({ config, database: {}, emailService: {}, userModel: { getUserByEmail: async () => { throw failure; } } });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));
   t.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
   const base = `http://127.0.0.1:${server.address().port}`;
-  for (const error of [Object.assign(new Error("statement timed out"), { code: "57014" }), new Error("Query read timeout"),
-    Object.assign(new Error("database starting"), { code: "57P03" }), Object.assign(new Error("socket reset"), { code: "ECONNRESET" })]) {
+  for (const error of [Object.assign(new Error("operation timed out"), { name: "MongoOperationTimeoutError" }), Object.assign(new Error("network timeout"), { name: "MongoNetworkTimeoutError" }),
+    Object.assign(new Error("server selection failed"), { name: "MongoServerSelectionError" }), Object.assign(new Error("socket reset"), { code: "ECONNRESET" })]) {
     failure = error;
     const response = await fetch(`${base}/api/auth/login`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "test@example.com", password: "password123" }),

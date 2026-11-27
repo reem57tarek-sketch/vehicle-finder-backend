@@ -12,7 +12,6 @@ COPY --chown=node:node models ./models
 COPY --chown=node:node routes ./routes
 COPY --chown=node:node services ./services
 COPY --chown=node:node utils ./utils
-COPY --chown=node:node migrations ./migrations
 COPY --chown=node:node scripts ./scripts
 USER node
-CMD ["sh", "-c", "npm run db:migrate && exec node server.js"]
+CMD ["node", "server.js"]

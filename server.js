@@ -1,15 +1,15 @@
 require("dotenv").config({ quiet: true });
 const logger = require("./utils/logger");
 const { loadConfig } = require("./config/env");
-const { createPool } = require("./config/db");
+const { createDatabase } = require("./config/db");
 const { createEmailService } = require("./services/emailService");
 const { createApp } = require("./app");
 
 function start() {
   const config = loadConfig();
-  const pool = createPool(config);
+  const database = createDatabase(config);
   const emailService = createEmailService(config);
-  const app = createApp({ config, pool, emailService });
+  const app = createApp({ config, database, emailService });
   const server = app.listen(config.port, config.host);
   server.once("listening", () => {
     logger.info("server.started", { port: config.port, host: config.host, environment: process.env.NODE_ENV || "development" });
@@ -26,7 +26,7 @@ function start() {
     server.close(async () => {
       try {
         emailService.close();
-        await pool.end();
+        await database.close();
       } catch (error) {
         logger.error("server.shutdown_failed", { error });
         exitCode = 1;

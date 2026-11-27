@@ -8,9 +8,8 @@ function errorHandler(error, req, res, next) {
   if (error.type === "entity.parse.failed") [status, code, message] = [400, "INVALID_JSON", "Request body must be valid JSON"];
   if (error.type === "entity.too.large") [status, code, message] = [413, "BODY_TOO_LARGE", "Request body exceeds the size limit"];
   if (error.status === 415) [status, code, message] = [415, "UNSUPPORTED_ENCODING", "Unsupported request encoding"];
-  if (error.code === "23505") [status, code, message] = [409, "DUPLICATE_RESOURCE", "Email or another unique value is already registered"];
-  if (["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "57P01", "57P03", "53300", "08006", "08001", "57014", "55P03"].includes(error.code) ||
-      ["Query read timeout", "timeout exceeded when trying to connect", "Connection terminated unexpectedly", "Connection terminated due to connection timeout"].includes(error.message)) {
+  if (error.code === 11000) [status, code, message] = [409, "DUPLICATE_RESOURCE", "Email or another unique value is already registered"];
+  if (["MongoServerSelectionError", "MongoNetworkError", "MongoNetworkTimeoutError", "MongoOperationTimeoutError", "MongoWaitQueueTimeoutError"].includes(error.name) || error.code === 50 || ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"].includes(error.code)) {
     [status, code, message] = [503, "SERVICE_UNAVAILABLE", "A required service is temporarily unavailable"];
   }
   const loggedError = error.type === "entity.parse.failed" ? {

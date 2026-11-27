@@ -9,7 +9,7 @@ const config = { jwtSecret: "test-secret-with-more-than-32-bytes", baseUrl: "htt
   resetUrl: "https://app.example.com/reset-password", corsOrigins: ["https://app.example.com"] };
 
 async function fixture(t, overrides = {}) {
-  const app = createApp({ config, pool: { query: async () => ({ rows: [] }) },
+  const app = createApp({ config, database: { check: async () => ({ rows: [] }) },
     emailService: { sendEmail: async () => ({ id: "sent" }) }, userModel: {}, ...overrides });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((resolve) => server.once("listening", resolve));
@@ -22,13 +22,21 @@ async function fixture(t, overrides = {}) {
 }
 const post = (body) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
+test("missing reset frontend URL keeps the server online and rejects recovery before database writes", async (t) => {
+  const request = await fixture(t, { config: { ...config, resetUrl: undefined } });
+  assert.equal((await request("/")).status, 200);
+  const response = await request("/api/auth/forgot-password", post({ email: "a@example.com" }));
+  assert.equal(response.status, 503);
+  assert.equal(response.body.code, "PASSWORD_RESET_NOT_CONFIGURED");
+});
+
 test("health and database check work without email network startup", async (t) => {
   const request = await fixture(t);
   for (const path of ["/health", "/health/live", "/api/db-check"]) assert.equal((await request(path)).status, 200);
 });
 
-test("unavailable database/schema reports readiness 503 but liveness stays up", async (t) => {
-  const request = await fixture(t, { pool: { query: async () => { throw Object.assign(new Error("missing users"), { code: "42P01" }); } } });
+test("unavailable MongoDB/indexes reports readiness 503 but liveness stays up", async (t) => {
+  const request = await fixture(t, { database: { check: async () => { throw Object.assign(new Error("database offline"), { name: "MongoServerSelectionError" }); } } });
   const response = await request("/health");
   assert.equal(response.status, 503);
   assert.equal(response.body.code, "DATABASE_NOT_READY");
@@ -105,10 +113,10 @@ test("email failure preserves recoverable account and resend issues a new token"
 });
 
 test("unique constraint races return 409; unexpected errors stay private", async (t) => {
-  let code = "23505";
+  let code = 11000;
   const request = await fixture(t, { userModel: { getUserByEmail: async () => { throw Object.assign(new Error("private-database-detail"), { code }); } } });
   assert.equal((await request("/api/auth/login", post({ email: "a@example.com", password: "password123" }))).status, 409);
-  code = "42P01";
+  code = "UNKNOWN_ERROR";
   const response = await request("/api/auth/login", post({ email: "a@example.com", password: "password123" }));
   assert.equal(response.status, 500);
   assert.equal(response.body.message, "Internal server error");

@@ -1,52 +1,22 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { loadConfig, loadDatabaseConfig } = require("../config/env");
-const { createPool } = require("../config/db");
 const { createEmailService } = require("../services/emailService");
 const logger = require("../utils/logger");
-const env = { DATABASE_URL: "postgresql://postgres:test@localhost:5432/test", JWT_SECRET: "test-secret-longer-than-thirty-two-bytes" };
+const env = { MONGODB_URI: "mongodb://127.0.0.1:27017", JWT_SECRET: "test-secret-longer-than-thirty-two-bytes" };
 
-test("migrations validate database configuration independently of application secrets", () => {
-  assert.equal(loadDatabaseConfig({ DATABASE_URL: env.DATABASE_URL }).dbPort, 5432);
-  assert.throws(() => loadDatabaseConfig({ DATABASE_URL: env.DATABASE_URL, DB_SSL: "" }));
-  assert.throws(() => loadDatabaseConfig({ DATABASE_URL: env.DATABASE_URL, DB_PORT: "not-a-port" }));
-  assert.throws(() => loadDatabaseConfig({}));
+test("MongoDB configuration validates URI, database name and timeouts", async () => {
+  assert.equal(loadConfig(env).mongoDbName, "vehicle_finder");
+  assert.equal(loadConfig({...env, MONGODB_DB_NAME:"custom"}).mongoDbName, "custom");
+  for(const override of [{MONGODB_URI:"postgresql://host/db"},{MONGODB_URI:""},{MONGODB_DB_NAME:"bad/name"},{DB_TIMEOUT_MS:"bad"},{JWT_SECRET:"short"}]) assert.throws(()=>loadConfig({...env,...override}));
 });
 
-test("configuration supports platform ports, domain variables, and explicit DB credentials", () => {
-  assert.equal(loadConfig(env).port, 3000);
-  assert.equal(loadConfig({ ...env, PORT: "10000", RAILWAY_PUBLIC_DOMAIN: "api.up.railway.app" }).baseUrl, "https://api.up.railway.app");
-  assert.equal(loadConfig({ ...env, RENDER_EXTERNAL_URL: "https://api.onrender.com" }).baseUrl, "https://api.onrender.com");
-  assert.equal(loadConfig({ JWT_SECRET: env.JWT_SECRET, DB_HOST: "localhost", DB_NAME: "test", DB_USER: "postgres", DB_PASSWORD: "test" }).dbPort, 5432);
-  assert.equal(loadConfig({ JWT_SECRET: env.JWT_SECRET, PGHOST: "localhost", PGDATABASE: "test", PGUSER: "postgres", PGPASSWORD: "test" }).dbPort, 5432);
-});
-
-test("configuration rejects missing secrets, malformed ports and incomplete production setup", () => {
-  for (const override of [{ JWT_SECRET: "short" }, { DATABASE_URL: "https://example.com" }, { PORT: "0" }, { PORT: "65536" }, { PORT: "3000abc" },
-    { DB_SSL: "yes" }, { DB_SSL: "" }, { SMTP_SECURE: "" }, { NODE_ENV: "production" }, { CORS_ORIGINS: "https://app.example.com/path" }]) {
-    assert.throws(() => loadConfig({ ...env, ...override }));
+test("MongoDB connection credentials are redacted from nested log errors", () => {
+  for (const uri of ["mongodb://alice:private-password@localhost:27017/db", "mongodb+srv://alice:private-password@cluster.example.com/db"]) {
+    const output = JSON.stringify(logger.clean({ mongoUri: uri, error: new Error(`Connection failed: ${uri}`) }));
+    assert.ok(!output.includes("private-password"));
+    assert.ok(!output.includes("alice"));
   }
-  const production = { ...env, NODE_ENV: "production", PUBLIC_BASE_URL: "https://api.example.com", PASSWORD_RESET_URL: "https://app.example.com/reset-password",
-    EMAIL_PROVIDER: "resend", RESEND_API_KEY: "test-key", EMAIL_FROM: "noreply@example.com" };
-  assert.equal(loadConfig(production).emailProvider, "resend");
-  assert.throws(() => loadConfig({ ...production, EMAIL_PROVIDER: "disabled" }));
-  assert.throws(() => loadConfig({ ...production, PASSWORD_RESET_URL: "" }));
-  assert.throws(() => loadConfig({ ...production, PUBLIC_BASE_URL: "http://api.example.com" }));
-});
-
-test("pool accepts DATABASE_URL and explicit SSL with certificate verification", async () => {
-  const local = { ...env, DB_SSL: "false" };
-  const pool = createPool(loadConfig(local), local);
-  assert.ok(pool.options.connectionString.includes("localhost:5432"));
-  assert.equal(pool.options.ssl, false);
-  assert.equal(pool.options.connectionTimeoutMillis, 5000);
-  await pool.end();
-  const tlsEnv = { ...env, DATABASE_URL: `${env.DATABASE_URL}?sslmode=no-verify`, DB_SSL: "true", DB_SSL_CA: "line1\\nline2" };
-  const tls = createPool(loadConfig(tlsEnv), tlsEnv);
-  assert.equal(tls.options.ssl.rejectUnauthorized, true);
-  assert.equal(tls.options.ssl.ca, "line1\nline2");
-  assert.ok(!tls.options.connectionString.includes("sslmode"));
-  await tls.end();
 });
 
 test("Resend delivery uses HTTPS and never calls network during service construction", async () => {

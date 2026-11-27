@@ -11,18 +11,11 @@ function httpUrl(value, key, production) {
   return url.toString().replace(/\/$/, "");
 }
 function loadDatabaseConfig(env = process.env) {
-  if (!env.DATABASE_URL && !(env.DB_HOST && env.DB_NAME && env.DB_USER && env.DB_PASSWORD) &&
-      !(env.PGHOST && env.PGDATABASE && env.PGUSER && env.PGPASSWORD)) throw new Error("Configure DATABASE_URL or DB_HOST, DB_NAME, DB_USER, DB_PASSWORD (PG* equivalents supported)");
-  if (env.DATABASE_URL) {
-    try { if (!["postgres:", "postgresql:"].includes(new URL(env.DATABASE_URL).protocol)) throw new Error(); }
-    catch { throw new Error("DATABASE_URL must be a valid PostgreSQL URL"); }
-  }
-  if (env.DB_SSL !== undefined && !["true", "false"].includes(env.DB_SSL)) throw new Error("DB_SSL must be true or false");
-  return {
-    dbPort: integer(env, "DB_PORT", env.PGPORT || 5432, 65535),
-    dbPoolMax: integer(env, "DB_POOL_MAX", 10, 100),
-    dbTimeout: integer(env, "DB_TIMEOUT_MS", 5000, 60000),
-  };
+  const mongoUri = env.MONGODB_URI;
+  if (!mongoUri || !/^mongodb(?:\+srv)?:\/\//.test(mongoUri)) throw new Error("MONGODB_URI must be a MongoDB connection string");
+  const mongoDbName = env.MONGODB_DB_NAME || "vehicle_finder";
+  if (!/^[a-zA-Z0-9_-]+$/.test(mongoDbName)) throw new Error("MONGODB_DB_NAME must contain letters, digits, underscores or hyphens");
+  return { mongoUri, mongoDbName, dbPoolMax: integer(env, "DB_POOL_MAX", 10, 100), dbTimeout: integer(env, "DB_TIMEOUT_MS", 5000, 60000) };
 }
 function loadConfig(env = process.env) {
   const production = env.NODE_ENV === "production";
@@ -33,7 +26,6 @@ function loadConfig(env = process.env) {
   if (production && !publicUrl) throw new Error("PUBLIC_BASE_URL is required in production");
   const baseUrl = httpUrl(publicUrl || `http://localhost:${port}`, "PUBLIC_BASE_URL", production);
   const resetUrl = env.PASSWORD_RESET_URL ? httpUrl(env.PASSWORD_RESET_URL, "PASSWORD_RESET_URL", production) : undefined;
-  if (production && !resetUrl) throw new Error("PASSWORD_RESET_URL must point to the frontend reset-password page");
   const emailProvider = env.EMAIL_PROVIDER || (env.RESEND_API_KEY ? "resend" : env.SMTP_HOST ? "smtp" : "disabled");
   if (!["resend", "smtp", "disabled"].includes(emailProvider)) throw new Error("EMAIL_PROVIDER must be resend, smtp or disabled");
   if (production && emailProvider === "disabled") throw new Error("Configure a production email provider (resend or smtp)");
@@ -45,7 +37,7 @@ function loadConfig(env = process.env) {
     production, environment: env.NODE_ENV || "development",
     platform: env.RAILWAY_PROJECT_ID || env.RAILWAY_PUBLIC_DOMAIN ? "railway" :
       env.RENDER || env.RENDER_EXTERNAL_URL ? "render" : "standalone",
-    port, host: "0.0.0.0", baseUrl, resetUrl: resetUrl || `${baseUrl}/reset-password`,
+    port, host: "0.0.0.0", baseUrl, resetUrl: resetUrl || (production ? undefined : `${baseUrl}/reset-password`),
     jwtSecret: env.JWT_SECRET, emailProvider,
     smtpPort: integer(env, "SMTP_PORT", 587, 65535),
     ...database,

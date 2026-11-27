@@ -1,168 +1,47 @@
-function createUserModel(pool) {
-
-  const getUserById = async (userId) => {
-    const result = await pool.query(
-      `SELECT user_id, full_name, email, phone_number,
-              is_email_verified, created_at
-       FROM users
-       WHERE user_id = $1`,
-      [userId]
-    );
-
-    return result.rows[0];
-  };
-
-  const getUserByEmail = async (email) => {
-    const result = await pool.query(
-      "SELECT * FROM users WHERE LOWER(email) = $1",
-      [email]
-    );
-
-    return result.rows[0];
-  };
-
-  const createUser = async (userData) => {
-    const {
-      full_name,
-      email,
-      phone_number,
-      password_hash,
-      verification_token_hash,
-      verification_token_expires
-    } = userData;
-
-    const result = await pool.query(
-      `INSERT INTO users (
-        full_name,
-        email,
-        phone_number,
-        password_hash,
-        verification_token_hash,
-        verification_token_expires
-      )
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING user_id, full_name, email, phone_number,
-                is_email_verified, created_at`,
-      [
-        full_name,
-        email,
-        phone_number,
-        password_hash,
-        verification_token_hash,
-        verification_token_expires
-      ]
-    );
-
-    return result.rows[0];
-  };
-
-  const verifyEmail = async (tokenHash) => {
-    const result = await pool.query(
-      `UPDATE users
-       SET is_email_verified = true,
-           verification_token_hash = NULL,
-           verification_token_expires = NULL,
-           updated_at = NOW()
-       WHERE verification_token_hash = $1
-         AND verification_token_expires > NOW()
-       RETURNING user_id, full_name, email, is_email_verified`,
-      [tokenHash]
-    );
-
-    return result.rows[0];
-  };
-
-  const getUserForPasswordReset = async (email) => {
-    const result = await pool.query(
-      "SELECT user_id, email FROM users WHERE LOWER(email) = $1",
-      [email]
-    );
-
-    return result.rows[0];
-  };
-
-  const saveResetToken = async (userId, tokenHash, expires) => {
-    await pool.query(
-      `UPDATE users
-       SET reset_token_hash = $1,
-           reset_token_expires = $2,
-           updated_at = NOW()
-       WHERE user_id = $3`,
-      [tokenHash, expires, userId]
-    );
-  };
-
-  const resetPassword = async (tokenHash, passwordHash) => {
-    const result = await pool.query(
-      `UPDATE users
-       SET password_hash = $1,
-          reset_token_hash = NULL,
-          reset_token_expires = NULL,
-          updated_at = NOW()
-       WHERE reset_token_hash = $2
-         AND reset_token_expires > NOW()
-       RETURNING user_id`,
-      [passwordHash, tokenHash]
-    );
-
-    return result.rows[0];
-  };
-
-  const updateUser = async (userId, fullName, phoneNumber) => {
-    const result = await pool.query(
-      `UPDATE users
-       SET updated_at = NOW(), full_name = COALESCE($1, full_name),
-       phone_number = COALESCE($2, phone_number)
-       WHERE user_id = $3
-       RETURNING user_id, full_name, email, phone_number,
-       is_email_verified, created_at`,
-      [fullName, phoneNumber, userId]
-    );
-
-    return result.rows[0];
-  };
-
-  const getPasswordHash = async (userId) => {
-    const result = await pool.query(
-      "SELECT password_hash FROM users WHERE user_id = $1",
-      [userId]
-    );
-
-    return result.rows[0];
-  };
-
-  const updatePassword = async (userId, hashedPassword, currentHash) => {
-    const result = await pool.query(
-      `UPDATE users SET password_hash = $1, reset_token_hash = NULL,
-       reset_token_expires = NULL, updated_at = NOW()
-       WHERE user_id = $2 AND password_hash = $3 RETURNING user_id`,
-      [hashedPassword, userId, currentHash]
-    );
-    return result.rows[0];
-  };
-
-  const saveVerificationToken = async (userId, tokenHash, expires) => {
-    await pool.query(
-      `UPDATE users SET verification_token_hash = $1,
-       verification_token_expires = $2, updated_at = NOW()
-       WHERE user_id = $3 AND is_email_verified IS NOT TRUE`,
-      [tokenHash, expires, userId]
-    );
-  };
-
+const { ObjectId } = require("mongodb");
+const publicFields = { _id: 1, full_name: 1, email: 1, phone_number: 1, is_email_verified: 1, created_at: 1 };
+const emailOptions = { collation: { locale: "en", strength: 2 } };
+function serialize(document) {
+  if (!document) return undefined;
+  const { _id, ...fields } = document;
+  return { user_id: _id.toString(), ...fields };
+}
+function idFilter(id) { return typeof id === "string" && /^[a-f0-9]{24}$/i.test(id) ? { _id: new ObjectId(id) } : null; }
+function createUserModel(database) {
+  async function findId(id, projection) {
+    const filter = idFilter(id);
+    if (!filter) return undefined;
+    return serialize(await (await database.users()).findOne(filter, { projection }));
+  }
+  async function update(filter, fields, projection = publicFields) {
+    if (!filter) return undefined;
+    return serialize(await (await database.users()).findOneAndUpdate(filter,
+      { $set: { ...fields, updated_at: new Date() } },
+      { returnDocument: "after", includeResultMetadata: false, projection }));
+  }
   return {
-    saveVerificationToken,
-    getUserById,
-    getUserByEmail,
-    createUser,
-    verifyEmail,
-    getUserForPasswordReset,
-    saveResetToken,
-    resetPassword,
-    updateUser,
-    getPasswordHash,
-    updatePassword
+    getUserById: (id) => findId(id, publicFields),
+    async getUserByEmail(email) { return serialize(await (await database.users()).findOne({ email }, emailOptions)); },
+    async createUser(data) {
+      const document = { ...data, email: data.email.trim().toLowerCase(), phone_number: data.phone_number || null,
+        is_email_verified: false, reset_token_hash: null, reset_token_expires: null, created_at: new Date(), updated_at: new Date() };
+      const { insertedId } = await (await database.users()).insertOne(document);
+      return findId(insertedId.toString(), publicFields);
+    },
+    verifyEmail: (hash) => update({ verification_token_hash: hash, verification_token_expires: { $gt: new Date() } },
+      { is_email_verified: true, verification_token_hash: null, verification_token_expires: null },
+      { _id: 1, full_name: 1, email: 1, is_email_verified: 1 }),
+    async getUserForPasswordReset(email) { return serialize(await (await database.users()).findOne({ email },
+      { ...emailOptions, projection: { _id: 1, email: 1 } })); },
+    saveResetToken: (id, hash, expires) => update(idFilter(id), { reset_token_hash: hash, reset_token_expires: expires }, { _id: 1 }),
+    resetPassword: (hash, passwordHash) => update({ reset_token_hash: hash, reset_token_expires: { $gt: new Date() } },
+      { password_hash: passwordHash, reset_token_hash: null, reset_token_expires: null }, { _id: 1 }),
+    updateUser: (id, name, phone) => update(idFilter(id), { ...(name == null ? {} : { full_name: name }), ...(phone == null ? {} : { phone_number: phone }) }),
+    getPasswordHash: (id) => findId(id, { _id: 1, password_hash: 1 }),
+    updatePassword: (id, hash, currentHash) => update(idFilter(id) ? { ...idFilter(id), password_hash: currentHash } : null,
+      { password_hash: hash, reset_token_hash: null, reset_token_expires: null }, { _id: 1 }),
+    saveVerificationToken: (id, hash, expires) => update(idFilter(id) ? { ...idFilter(id), is_email_verified: { $ne: true } } : null,
+      { verification_token_hash: hash, verification_token_expires: expires }, { _id: 1 }),
   };
-
 }
 module.exports = { createUserModel };

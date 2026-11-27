@@ -20,7 +20,7 @@ test("production server binds PORT without contacting email service and survives
   await new Promise((resolve) => probe.close(resolve));
   const child = spawn(process.execPath, ["server.js"], {
     env: { ...process.env, NODE_ENV: "production", PORT: String(port),
-      DATABASE_URL: "postgresql://postgres:test@127.0.0.1:1/missing", DB_TIMEOUT_MS: "1000",
+      MONGODB_URI: "mongodb://127.0.0.1:1", DB_TIMEOUT_MS: "1000",
       JWT_SECRET: "production-startup-test-secret-more-than-32-bytes",
       PUBLIC_BASE_URL: "https://api.example.com", PASSWORD_RESET_URL: "https://app.example.com/reset-password",
       CORS_ORIGINS: "", EMAIL_PROVIDER: "resend", EMAIL_FROM: "noreply@example.com", RESEND_API_KEY: "dummy-test-key",
@@ -55,8 +55,8 @@ test("an occupied port exits with failure and never logs server.started", async 
   t.after(() => new Promise((resolve) => occupied.close(resolve)));
   const child = spawnSync(process.execPath, ["server.js"], {
     env: { ...process.env, NODE_ENV: "production", PORT: String(occupied.address().port),
-      DATABASE_URL: "postgresql://postgres:test@127.0.0.1:1/missing",
-      JWT_SECRET: "occupied-port-test-secret-more-than-32-bytes", DB_SSL: "false",
+      MONGODB_URI: "mongodb://127.0.0.1:1",
+      JWT_SECRET: "occupied-port-test-secret-more-than-32-bytes",
       PUBLIC_BASE_URL: "https://api.example.com", PASSWORD_RESET_URL: "https://app.example.com/reset-password",
       CORS_ORIGINS: "", EMAIL_PROVIDER: "resend", EMAIL_FROM: "noreply@example.com", RESEND_API_KEY: "dummy-test-key",
     }, encoding: "utf8", timeout: 5000, windowsHide: true,
@@ -79,7 +79,7 @@ test("shutdown signals and fatal exceptions close the server with the correct ex
     await new Promise((resolve) => probe.close(resolve));
     const child = spawnSync(process.execPath, ["-e", `const server = require('./server').start(); server.once('listening', () => { ${trigger}; });`], {
       env: { ...process.env, NODE_ENV: "production", PORT: String(port),
-        DATABASE_URL: "postgresql://postgres:test@127.0.0.1:1/missing", DB_SSL: "false",
+        MONGODB_URI: "mongodb://127.0.0.1:1",
         JWT_SECRET: "shutdown-test-secret-more-than-32-bytes", CORS_ORIGINS: "",
         PUBLIC_BASE_URL: "https://api.example.com", PASSWORD_RESET_URL: "https://app.example.com/reset-password",
         EMAIL_PROVIDER: "resend", EMAIL_FROM: "noreply@example.com", RESEND_API_KEY: "dummy-test-key",

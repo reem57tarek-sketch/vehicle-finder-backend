@@ -1,55 +1,28 @@
-
-const { Pool } = require("pg");
+const { MongoClient } = require("mongodb");
 const logger = require("../utils/logger");
-
-function createPool(config, env = process.env) {
-  const options = {
-    max: config.dbPoolMax,
-    connectionTimeoutMillis: config.dbTimeout,
-    idleTimeoutMillis: 30000,
-    query_timeout: config.dbTimeout,
-    statement_timeout: config.dbTimeout,
-    application_name: "vehicle-finder-backend",
+function createDatabase(config) {
+  const client = new MongoClient(config.mongoUri, {
+    maxPoolSize: config.dbPoolMax, serverSelectionTimeoutMS: config.dbTimeout,
+    connectTimeoutMS: config.dbTimeout, socketTimeoutMS: config.dbTimeout,
+    waitQueueTimeoutMS: config.dbTimeout, appName: "vehicle-finder-backend",
+  });
+  const db = client.db(config.mongoDbName);
+  let initialization;
+  async function ready() {
+    if (!initialization) initialization = (async () => {
+      await client.connect();
+      await db.collection("users").createIndexes([
+        { key: { email: 1 }, name: "users_email_unique", unique: true, collation: { locale: "en", strength: 2 } },
+        { key: { verification_token_hash: 1 }, name: "users_verification_token" },
+        { key: { reset_token_hash: 1 }, name: "users_reset_token" },
+      ]);
+      logger.info("database.ready", { engine: "mongodb" });
+    })().catch((error) => { initialization = undefined; throw error; });
+    await initialization;
+  }
+  return { async users() { await ready(); return db.collection("users"); },
+    async check() { await ready(); await db.command({ ping: 1 }); },
+    async close() { await initialization?.catch(() => {}); await client.close(); },
   };
-
-  if (env.DATABASE_URL) {
-    options.connectionString = env.DATABASE_URL;
-  } else {
-    Object.assign(options, {
-      host: env.DB_HOST || env.PGHOST,
-      port: config.dbPort,
-      database: env.DB_NAME || env.PGDATABASE,
-      user: env.DB_USER || env.PGUSER,
-      password: env.DB_PASSWORD || env.PGPASSWORD,
-    });
-  }
-
-  if (env.DB_SSL !== undefined) {
-    if (options.connectionString) {
-      const url = new URL(options.connectionString);
-      for (const key of ["ssl", "sslmode", "sslcert", "sslkey", "sslrootcert"]) {
-        url.searchParams.delete(key);
-      }
-      options.connectionString = url.toString();
-    }
-
-    options.ssl = env.DB_SSL === "true"
-      ? {
-          rejectUnauthorized: true,
-          ...(env.DB_SSL_CA
-            ? { ca: env.DB_SSL_CA.replace(/\\n/g, "\n") }
-            : {}),
-        }
-      : false;
-  }
-
-  const pool = new Pool(options);
-
-  pool.on("error", (error) =>
-    logger.error("database.pool_error", { error })
-  );
-
-  return pool;
 }
-
-module.exports = { createPool };
+module.exports = { createDatabase };

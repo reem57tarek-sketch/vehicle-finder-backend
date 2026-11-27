@@ -9,7 +9,7 @@ const { version } = require("./package.json");
 const swaggerUi = require("swagger-ui-express");
 const { createOpenApi } = require("./docs/openapi");
 
-function createApp({ config, pool, emailService, userModel = createUserModel(pool) }) {
+function createApp({ config, database, emailService, userModel = createUserModel(database) }) {
   const app = express();
   app.disable("x-powered-by");
   app.use(requestLogger);
@@ -69,10 +69,9 @@ function createApp({ config, pool, emailService, userModel = createUserModel(poo
   app.get("/health/live", (req, res) => res.json({ status: "ok" }));
   const readiness = async (req, res) => {
     try {
-      // A reachable database with no schema is not ready to accept API traffic.
-      await pool.query("SELECT user_id, full_name, email, phone_number, password_hash, is_email_verified, verification_token_hash, verification_token_expires, reset_token_hash, reset_token_expires, created_at, updated_at FROM users LIMIT 0");
+      await database.check();
     } catch (cause) {
-      throw new AppError(503, "Database is unavailable or its schema is not ready", "DATABASE_NOT_READY", { cause });
+      throw new AppError(503, "MongoDB is unavailable or its indexes are not ready", "DATABASE_NOT_READY", { cause });
     }
     res.json({ status: "ok", database: "connected" });
   };

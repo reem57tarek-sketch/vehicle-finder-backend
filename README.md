@@ -1,115 +1,71 @@
 # Vehicle Finder Backend
 
-Express API with PostgreSQL, JWT authentication, email verification, and password recovery. Use Node.js 24; the deployment image pins this version.
+Express API using MongoDB, JWT authentication, email verification and password recovery. Use Node.js 24.
 
-Open `GET /` to see the running server's public URL, environment, platform, listening host/port, uptime, and links to its healthcheck and documentation. This describes the HTTP process; `/health` separately verifies database readiness. The internal listening port may differ from the public HTTPS port on Railway or Render.
+## Setup
 
-## Interactive API documentation
+Install dependencies with npm ci, copy .env.example to .env, then configure:
 
-Visit `/api-docs/` on the same backend URL (for example `http://localhost:3000/api-docs/`). `/api-docs` redirects to the trailing-slash URL. The Swagger page covers every API route, including healthchecks, authentication, profile updates, and password recovery, with request schemas, examples, success responses, and error responses. The source OpenAPI 3 document is available at `/openapi.json` for importing into Postman or another client.
-
-Register a test account, follow the verification link from its email, and log in. Copy the returned JWT into **Authorize** without the `Bearer` prefix; Swagger adds the authorization header to protected requests. Replace example email tokens with tokens from actual messages. **Try it out** executes real API requests against the selected server. The default server is the current deployment, so this works on localhost, Railway and Render. A second server entry uses `PUBLIC_BASE_URL` when configured.
-
-Swagger assets are served by the backend without a CDN. The browser does not send the spec to an external validator and does not persist authorization after a reload. Documentation and the root status endpoint remain available when the database is unavailable.
-
-## Local setup
-
-```powershell
-npm.cmd ci
-Copy-Item .env.example .env
-# Edit .env with your database and email settings.
-npm.cmd run db:migrate
-npm.cmd run dev
-```
-
-On Linux/macOS use `npm` instead of `npm.cmd`. `npm start` runs the server; `npm run dev` uses Node's built-in watch mode. There is no separate build step.
-
-The server binds to `0.0.0.0` and the platform's `PORT` (3000 locally). Configuration errors exit with status 1 and a `server.startup_failed` log instead of silently hanging. Email setup never makes an external request during startup.
-
-## Environment variables
-
-Start from `.env.example`. Set these in the hosting dashboard for production:
-
-| Variable | Value |
+| Variable | Purpose |
 | --- | --- |
-| `NODE_ENV` | `production` |
-| `DATABASE_URL` | PostgreSQL connection URL supplied by the database provider |
-| `JWT_SECRET` | A random secret containing at least 32 bytes |
-| `PUBLIC_BASE_URL` | Public HTTPS backend URL, without a trailing slash |
-| `PASSWORD_RESET_URL` | Existing frontend HTTPS reset-password page |
-| `CORS_ORIGINS` | Comma-separated frontend origins, e.g. `https://app.example.com` |
-| `EMAIL_PROVIDER` | `resend` (HTTPS), or `smtp` |
-| `EMAIL_FROM` | Sender address on a verified domain |
-| `RESEND_API_KEY` | Required when using Resend |
+| MONGODB_URI | MongoDB connection string, e.g. mongodb://127.0.0.1:27017 or the mongodb+srv:// URL supplied by Atlas |
+| MONGODB_DB_NAME | Database name; defaults to vehicle_finder |
+| JWT_SECRET | Random secret containing at least 32 bytes |
+| NODE_ENV | production on the hosting service |
+| PUBLIC_BASE_URL | Public HTTPS backend URL; hosting domain variables can supply it |
+| PASSWORD_RESET_URL | Frontend HTTPS reset-password page; missing in production disables recovery only |
+| CORS_ORIGINS | Comma-separated frontend origins |
+| EMAIL_PROVIDER | resend or smtp; disabled is allowed only in development |
+| EMAIL_FROM | Sender address on your verified email domain |
+| RESEND_API_KEY | Required for the Resend HTTPS provider |
+| DB_POOL_MAX | Maximum MongoDB connection pool size per server; defaults to 10 |
+| DB_TIMEOUT_MS | Connection, server selection, socket and queue timeout in milliseconds; defaults to 5000 |
 
-`RENDER_EXTERNAL_URL` or `RAILWAY_PUBLIC_DOMAIN` can supply the backend URL when `PUBLIC_BASE_URL` is unset. The password-reset frontend must read `?token=...` and POST `{ "token": "...", "newPassword": "..." }` to `/api/auth/reset-password`. This repository contains the API, so configure the frontend URL explicitly in production.
+Run npm start or npm run dev. The server listens on 0.0.0.0 and the platform PORT, defaulting to 3000 locally. GET / shows runtime details and documentation links. /api-docs/ serves interactive Swagger with request/response examples and Bearer authorization; /openapi.json serves the specification.
 
-For SMTP, configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and optionally `SMTP_SECURE` (`true` for implicit TLS, usually port 465). SMTP connections have bounded timeouts. Development can use `EMAIL_PROVIDER=disabled`; attempts to send then return 503 instead of pretending to deliver mail. No temporary Ethereal accounts are created.
+## MongoDB
 
-Render free web services block outbound SMTP ports 25, 465 and 587. Use the HTTPS provider on that plan. Resend requires a valid API key and a permitted sender/domain. See [Render's free-service limitations](https://render.com/docs/free) and [Resend's sending API](https://resend.com/docs/api-reference/emails/send-email).
+The official MongoDB driver stores users in the users collection. Public user_id fields are MongoDB ObjectId strings. Passwords and email/reset tokens are hashed as before. Verification and reset tokens expire after 15 minutes and are consumed atomically. Concurrent password changes check the previous hash to avoid overwriting newer credentials.
 
-Instead of `DATABASE_URL`, the app accepts `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, or their `PG*` equivalents. `DB_POOL_MAX` defaults to 10 per instance; account for all replicas against your database connection limit. Connection/query timeouts default to 5000ms (`DB_TIMEOUT_MS`).
+The app connects lazily, creates a case-insensitive unique email index plus token indexes, and checks readiness before serving database operations. No SQL or migration command runs during startup. The MongoDB account needs permission to read/write the selected database and create its indexes. Existing duplicate emails can prevent unique-index creation; resolve them before using that collection. Token indexes are ordinary lookup indexes, not TTL indexes: expiring a token never deletes its user.
 
-Leave `DB_SSL` unset to honor the database URL's SSL options. Set `DB_SSL=true` to enforce certificate verification, optionally providing `DB_SSL_CA` for a private certificate authority; this overrides URL SSL options. Use `DB_SSL=false` only when the database provider documents a trusted non-TLS connection, such as a private network. Do not disable certificate validation to hide TLS failures. See [node-postgres SSL settings](https://node-postgres.com/features/ssl).
+MongoDB Atlas connections must use the provider's URI, permitted database user and network access configuration. Keep TLS enabled for Atlas; this application does not disable certificate verification. Configure DB_TIMEOUT_MS and DB_POOL_MAX for your service size. See [MongoDB connection options](https://www.mongodb.com/docs/drivers/node/current/connect/connection-options/).
 
-Do not commit real environment credentials. `.gitignore` excludes new `.env` files, but files already tracked by Git remain tracked. If a real `.env` was committed, rotate those credentials and remove it from tracking separately; ignoring it does not remove it from history.
+### Online Atlas setup
 
-## Railway
+The environment template selects Atlas and leaves the local MongoDB URI commented out. There is no automatic fallback to localhost. Supply your actual Atlas URI; an empty MONGODB_URI intentionally fails configuration validation instead of connecting to a different database.
 
-Connect the repository to the existing backend service and attach PostgreSQL. Set `DATABASE_URL` to the PostgreSQL service's variable reference, then set the production variables above. Generate a public domain for verification links.
+1. Create or select a cluster in MongoDB Atlas.
+2. Create a database user with read/write access to vehicle_finder (Atlas account login and database credentials are separate).
+3. Add your development machine's public IP and your hosting service's outbound IP addresses to the project's network access list.
+4. Open Connect > Drivers, select Node.js, and copy the connection string into MONGODB_URI in your private .env. Replace the credential placeholders; percent-encode special characters in the password.
+5. Keep MONGODB_DB_NAME=vehicle_finder. Set the same variables in Railway or Render, then restart/redeploy.
+6. Request GET /health. A 200 response confirms the connection and index setup. A running root page alone does not confirm Atlas connectivity.
 
-The included Dockerfile runs migrations and starts Node as the final process, so no custom start command is required. Clear any old start-command override that bypasses migrations, or use `npm run db:migrate && node server.js`. Set the healthcheck path to `/health` and its timeout to 120 seconds. Let Railway supply `PORT`.
+For Atlas, the environment template uses DB_TIMEOUT_MS=30000 to allow initial server discovery and TLS connection setup. Set this value in your hosting environment as well; the application default remains 5000ms when the variable is omitted.
 
-No `railway.json` is required. Railway's legacy Config as Code is deprecated; configure the existing service in its dashboard or import its configuration using the current IaC workflow. See [Railway configuration](https://docs.railway.com/infrastructure-as-code) and [healthchecks](https://docs.railway.com/deployments/healthchecks).
+See [Atlas connection instructions](https://www.mongodb.com/docs/atlas/driver-connection/) and [network access configuration](https://www.mongodb.com/docs/atlas/security/ip-access-list/). Do not paste live credentials into chat or commit them to Git.
 
-## Render
+Existing PostgreSQL data is not copied or deleted by this change. Moving existing accounts requires a separate export/import that maps IDs to ObjectIds, preserves password hashes, normalizes emails and converts timestamps to BSON dates. Old JWTs refer to old IDs; users should log in again after any data transfer. DATABASE_URL and DB_HOST/DB_USER/DB_PASSWORD settings are no longer used. Do not point MONGODB_URI at PostgreSQL.
 
-For a new service, use the included `render.yaml` Blueprint and fill in its prompted environment variables. It expects an existing PostgreSQL URL; it does not provision a database. For an existing native Node service, set:
+## Deployment
 
-| Setting | Value |
-| --- | --- |
-| Node version | `24` |
-| Build command | `npm ci --omit=dev` |
-| Start command | `npm run db:migrate && npm start` |
-| Health check | `/health` |
+On Railway or Render, configure the environment variables above using a MongoDB service or Atlas. The included Dockerfile starts node server.js directly. The Render Blueprint expects MONGODB_URI and does not provision MongoDB.
 
-Alternatively deploy the Dockerfile, which already runs migrations. Set all production variables from the table above. Do not hardcode `PORT`; Render supplies it. See [Render web-service configuration](https://render.com/docs/web-services).
+Use npm start as the Start Command and remove any old Pre-deploy Command that runs db:migrate. Deployments use /health/live, which checks the HTTP process only. GET /health and /api/db-check ping MongoDB and ensure user indexes are ready; failures return 503 DATABASE_NOT_READY. The root page and Swagger remain available while MongoDB is unavailable.
 
-## Database migrations
+Render native Node build command: npm ci --omit=dev. Start command: npm start. Set NODE_VERSION to 24 and NODE_ENV to production. Let the platform supply PORT.
 
-`npm run db:migrate` applies versioned SQL once, inside a transaction with a lock to serialize concurrent deployments. It creates a fresh `users` table or adds missing optional auth/timestamp columns to an existing table without removing records or changing primary keys. Core columns `user_id`, `full_name`, `email`, and `password_hash` must already have compatible types on existing installations.
+## Email and password recovery
 
-The normalized email uniqueness index intentionally fails if an old database already contains case-insensitive duplicate emails. The transaction rolls back; resolve those records deliberately before redeploying. Inspect `database.migration_failed` logs for SQL codes, such as `23505` (duplicates), `42703` (missing column), or `42501` (insufficient permissions).
+Resend sends through HTTPS and is suitable for Render free services, which block common SMTP ports. Alternatively configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD and optionally SMTP_SECURE. Configure PASSWORD_RESET_URL to an existing frontend page that reads ?token=... and posts token and newPassword to /api/auth/reset-password. Without that URL in production, password recovery returns 503 PASSWORD_RESET_NOT_CONFIGURED while the server stays online.
 
-## Logs and errors
+If registration returns VERIFICATION_EMAIL_FAILED, the account was saved. Fix email delivery and POST the email to /api/auth/resend-verification rather than registering again. Existing JWTs expire after one hour and are not immediately revoked by password changes.
 
-Logs are JSON lines written to stdout/stderr for Railway and Render to collect. Each HTTP response includes `X-Request-Id`. Error responses use:
+## Logs and checks
 
-```json
-{
-  "message": "Database is unavailable or its schema is not ready",
-  "code": "DATABASE_NOT_READY",
-  "requestId": "example-request-id"
-}
-```
+Logs are JSON lines with a top-level message for hosting viewers. Every response has X-Request-Id; errors include message, code and requestId. Locate request.failed events by ID for stacks and causes. Request bodies, authorization headers and mail contents are not logged. MongoDB connection URLs and environment secrets are redacted.
 
-Search hosting logs by the `requestId`. `request.failed` includes the method, route, status, error code, stack with file/line, and nested cause. `request.completed` includes status and duration. Startup, pool, mail delivery, migration, shutdown, and fatal process errors have distinct event names. Client responses hide internal stacks and database details. Request bodies, authorization headers, query tokens, and mail contents are not logged; known environment secrets and credential URLs are redacted from error messages.
+Run npm run check for syntax checks and API tests, npm run test:coverage for coverage, and npm audit for known dependency vulnerabilities. Set TEST_MONGODB_URI to a separate local test MongoDB instance to enable the database integration test. It uses a randomly named database and drops only that database afterward. Without TEST_MONGODB_URI, that integration test is skipped. It covers indexes, the account lifecycle, duplicate emails, token expiry and atomic password changes. SMTP tests use a local test server without external mail.
 
-`GET /health` and `/api/db-check` return 200 only when the database is reachable and the required user columns exist; otherwise they return 503. `/health/live` checks the running HTTP process only. SMTP/Resend availability is checked during actual sends, with failures logged through the request error handler.
-
-If registration returns `VERIFICATION_EMAIL_FAILED`, the account already exists. After fixing email delivery, POST `{ "email": "user@example.com" }` to `/api/auth/resend-verification`. This also replaces expired verification links. Reset and verification tokens expire after 15 minutes and are single-use; only their hashes are stored. Existing JWTs expire after one hour and are not immediately revoked by a password change.
-
-## Verification
-
-```powershell
-npm.cmd run check
-npm.cmd run test:coverage
-npm.cmd audit
-# Optional: use a separate test PostgreSQL database, never your production database.
-$env:TEST_DATABASE_URL = 'postgresql://postgres:password@localhost:5432/vehicle_finder_test'
-npm.cmd test
-```
-
-Without `TEST_DATABASE_URL`, the PostgreSQL integration test is skipped. With it, the test creates a uniquely named schema, applies migrations twice, exercises the complete account lifecycle over HTTP, and removes its own schema afterward. HTTP tests also cover malformed input, safe errors, CORS, JWT failures, unavailable dependencies, and email retry behavior.
-
-The database tests also exercise upgrades of legacy UUID user tables, nullable verification flags, duplicate-email rollback and retry, concurrent migrations, expired tokens, and concurrent password changes. SMTP tests run against a local test SMTP server; they send no external email. A competing password change returns `409 PASSWORD_CHANGED` instead of overwriting newer credentials. Non-password text fields reject control characters before a database query. Empty `DB_SSL` or `SMTP_SECURE` values are configuration errors; leave them unset or use `true`/`false` explicitly.
+Never commit .env or live credentials. Previously committed secrets remain in Git history and must be rotated if exposed.

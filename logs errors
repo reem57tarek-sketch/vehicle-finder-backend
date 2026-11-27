@@ -1,0 +1,62 @@
+2026-11-24T10:24:58.615225062Z [inf]  Starting Container
+2026-11-24T10:25:00.997383092Z [inf]  
+2026-11-24T10:25:00.997392059Z [inf]  > vehicle-finder-backend@1.0.0 db:migrate
+2026-11-24T10:25:00.997400357Z [inf]  > node scripts/migrate.js
+2026-11-24T10:25:00.997407429Z [inf]  
+2026-11-24T10:25:00.997416277Z [inf]  
+2026-11-24T10:25:00.997423143Z [err]  npm notice
+2026-11-24T10:25:00.997429406Z [err]  npm notice New major version of npm available! 11.19.1 -> 12.2.3
+2026-11-24T10:25:00.997436085Z [err]  npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.3
+2026-11-24T10:25:00.997443684Z [err]  npm notice To update run: npm install -g npm@12.2.3
+2026-11-24T10:25:00.997450213Z [err]  npm notice
+2026-11-24T10:25:00.997456564Z [err]  
+2026-11-24T10:25:02.166747121Z [inf]  
+2026-11-24T10:25:02.166757282Z [inf]  > vehicle-finder-backend@1.0.0 db:migrate
+2026-11-24T10:25:02.166765902Z [inf]  > node scripts/migrate.js
+2026-11-24T10:25:02.166772977Z [inf]  
+2026-11-24T10:25:03.048464356Z [err]  
+2026-11-24T10:25:04.116101629Z [inf]  
+2026-11-24T10:25:04.116110934Z [inf]  > vehicle-finder-backend@1.0.0 db:migrate
+2026-11-24T10:25:04.116120119Z [inf]  > node scripts/migrate.js
+2026-11-24T10:25:04.116127343Z [inf]  
+2026-11-24T10:25:05.113456266Z [err]  
+2026-11-24T10:25:06.180298545Z [inf]  
+2026-11-24T10:25:06.180305533Z [inf]  > vehicle-finder-backend@1.0.0 db:migrate
+2026-11-24T10:25:06.180313295Z [inf]  > node scripts/migrate.js
+2026-11-24T10:25:06.180320745Z [inf]  
+2026-11-24T10:25:07.054552280Z [err]  
+2026-11-24T10:25:09.450921683Z [inf]  
+2026-11-24T10:25:09.450939111Z [err]  
+2026-11-24T10:25:09.451057506Z [inf]  
+2026-11-24T10:25:09.451064400Z [inf]  > vehicle-finder-backend@1.0.0 db:migrate
+2026-11-24T10:25:09.451071176Z [inf]  > node scripts/migrate.js
+2026-11-24T10:25:10.542671885Z [inf]  
+2026-11-24T10:25:10.542705624Z [inf]  
+2026-11-24T10:25:10.542713121Z [inf]  > vehicle-finder-backend@1.0.0 db:migrate
+2026-11-24T10:25:10.542719881Z [inf]  > node scripts/migrate.js
+2026-11-24T10:25:11.466973259Z [err]  
+2026-11-24T10:25:13.389168567Z [inf]  
+2026-11-24T10:25:13.389175406Z [inf]  > vehicle-finder-backend@1.0.0 db:migrate
+2026-11-24T10:25:13.389181636Z [inf]  > node scripts/migrate.js
+2026-11-24T10:25:13.389187083Z [inf]  
+2026-11-24T10:25:13.389192282Z [err]  
+2026-11-24T10:25:15.748590283Z [inf]  > vehicle-finder-backend@1.0.0 db:migrate
+2026-11-24T10:25:15.748609399Z [inf]  > node scripts/migrate.js
+2026-11-24T10:25:15.748647069Z [inf]  
+2026-11-24T10:25:15.748862924Z [inf]  
+2026-11-24T10:25:17.592686289Z [err]  
+2026-11-24T10:25:18.625325540Z [inf]  
+2026-11-24T10:25:18.625335130Z [inf]  > vehicle-finder-backend@1.0.0 db:migrate
+2026-11-24T10:25:18.625345341Z [inf]  > node scripts/migrate.js
+2026-11-24T10:25:18.625355051Z [inf]  
+2026-11-24T10:25:19.850040836Z [err]  
+2026-11-24T10:25:21.895712022Z [inf]  
+2026-11-24T10:25:21.895721284Z [inf]  > vehicle-finder-backend@1.0.0 db:migrate
+2026-11-24T10:25:21.895729565Z [inf]  > node scripts/migrate.js
+2026-11-24T10:25:21.895745533Z [inf]  
+2026-11-24T10:25:21.895803212Z [err]  
+2026-11-24T10:25:23.912059474Z [inf]  
+2026-11-24T10:25:23.912069326Z [inf]  > vehicle-finder-backend@1.0.0 db:migrate
+2026-11-24T10:25:23.912077924Z [inf]  > node scripts/migrate.js
+2026-11-24T10:25:23.912085157Z [inf]  
+2026-11-24T10:25:23.912093584Z [err]  

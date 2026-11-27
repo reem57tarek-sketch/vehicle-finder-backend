@@ -159,6 +159,9 @@ function createAuthController(User, { sendEmail }, config) {
 
   const forgotPassword = async (req, res, next) => {
     try {
+      if (!config.resetUrl) {
+        throw new AppError(503, "Password recovery is not configured. Set PASSWORD_RESET_URL to the frontend reset-password page.", "PASSWORD_RESET_NOT_CONFIGURED");
+      }
       const { email } = req.body;
 
       if (!email) {

@@ -4,8 +4,8 @@ services:
     runtime: node
     plan: free
     buildCommand: npm ci --omit=dev
-    startCommand: npm run db:migrate && npm start
-    healthCheckPath: /health
+    startCommand: npm start
+    healthCheckPath: /health/live
     envVars:
       - key: NODE_VERSION
         value: 24
@@ -13,7 +13,7 @@ services:
         value: production
       - key: JWT_SECRET
         generateValue: true
-      - key: DATABASE_URL
+      - key: MONGODB_URI
         sync: false
       - key: PUBLIC_BASE_URL
         sync: false
